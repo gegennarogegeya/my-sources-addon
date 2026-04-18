@@ -1,0 +1,9 @@
+{
+    "id": "org.mysources.gege",
+    "version": "1.0.0",
+    "name": "MySources Engine",
+    "description": "Personal Multi-Source Scraper (CB01 & More)",
+    "resources": ["stream"],
+    "types": ["movie", "series"],
+    "idPrefixes": ["tt"]
+}
