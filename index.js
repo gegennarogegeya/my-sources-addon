@@ -3,20 +3,20 @@ const fetch = require('node-fetch');
 const app = express();
 
 const manifest = {
-    "id": "org.mysources.gege.cb01",
-    "version": "17.0.0",
-    "name": "SelfStream CB01",
-    "description": "Sorgente CB01",
+    "id": "org.selfstream.community.real",
+    "version": "1.0.0",
+    "name": "SelfStream SC 🤌",
+    "description": "StreamingCommunity HLS Proxy",
     "resources": ["stream"],
     "types": ["movie", "series"],
     "idPrefixes": ["tt"]
 };
 
-// Middleware fondamentale per CORS
 app.use((req, res, next) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', '*');
-    res.setHeader('Content-Type', 'application/json');
+    if (req.method === 'OPTIONS') return res.sendStatus(200);
     next();
 });
 
@@ -28,56 +28,43 @@ app.get('/stream/:type/:id.json', async (req, res) => {
     const cleanId = id.split(':')[0];
 
     try {
-        // 1. Info film
-        const metaRes = await fetch(`https://v3-cinemeta.strem.io/meta/${type}/${cleanId}.json`);
-        const meta = await metaRes.json();
-        const title = meta.meta ? meta.meta.name : "";
-        if (!title) return res.json({ streams: [] });
+        // Logica VixSrc: Genera il link che passa dal proxy HLS dell'addon
+        const streams = [{
+            name: "SC 🤌",
+            title: "🎬 StreamingCommunity\n⚡ FHD - HLS Proxy\n🔊 Italiano",
+            url: `https://${req.headers.host}/proxy/hls/manifest.m3u8?id=${cleanId}&type=${type}`
+        }];
+        return res.json({ streams });
+    } catch (e) {
+        return res.json({ streams: [] });
+    }
+});
 
-        // 2. Ricerca (Dominio CB01UNO che è il più stabile ora)
-        const searchUrl = `https://cb01uno.biz/?s=${encodeURIComponent(title)}`;
-        const searchRes = await fetch(searchUrl, {
-            headers: { 'User-Agent': 'Mozilla/5.0' }
-        });
-        const html = await searchRes.text();
-
-        // Regex per il link del post
-        const postMatch = html.match(/href="(https:\/\/cb01uno\.biz\/[^"]+)"/);
-        if (!postMatch) return res.json({ streams: [] });
-
-        // 3. Entra nella pagina
-        const pageRes = await fetch(postMatch[1], { headers: { 'User-Agent': 'Mozilla/5.0' } });
-        const pageHtml = await pageRes.text();
-
-        const streams = [];
-        // Cerchiamo i link ai server principali
-        const servers = ["mixdrop", "supervideo", "wolfstream", "upstream", "vidoza"];
+// Il Proxy HLS che bypassa i blocchi (Logica SelfStream)
+app.get('/proxy/hls/manifest.m3u8', async (req, res) => {
+    const { id, type } = req.query;
+    try {
+        // Otteniamo lo slug o l'ID interno da StreamingCommunity
+        const search = await fetch(`https://streamingcommunity.computer/api/search?q=${id}`).then(r => r.json());
+        const scId = search.data?.[0]?.id;
         
-        servers.forEach(srv => {
-            const srvRegex = new RegExp(`href="(https?://(?:www\\.)?${srv}\\.[a-z]+/(?:e|v|f)/[^"]+)"`, "i");
-            const srvMatch = pageHtml.match(srvRegex);
-            if (srvMatch) {
-                streams.push({
-                    name: "CB01 🤌",
-                    title: `🎬 ${title}\n🌐 Server: ${srv.toUpperCase()}`,
-                    url: srvMatch[1]
-                });
+        if (!scId) return res.status(404).send("Not Found");
+
+        // Puntiamo al master manifest del loro server video (VixCloud)
+        const playlistUrl = `https://vixcloud.co/storage/encodings/${scId}/playlist.m3u8`;
+
+        const response = await fetch(playlistUrl, {
+            headers: {
+                'User-Agent': 'Mozilla/5.0',
+                'Referer': 'https://streamingcommunity.computer/',
+                'Origin': 'https://streamingcommunity.computer'
             }
         });
 
-        // Se non trova link diretti, manda almeno la pagina
-        if (streams.length === 0) {
-            streams.push({
-                name: "CB01 🤌",
-                title: `🔗 Vai alla pagina del film`,
-                externalUrl: postMatch[1]
-            });
-        }
-
-        return res.json({ streams });
-
+        res.setHeader('Content-Type', 'application/vnd.apple.mpegurl');
+        response.body.pipe(res);
     } catch (e) {
-        return res.json({ streams: [] });
+        res.status(500).send("Proxy Error");
     }
 });
 
