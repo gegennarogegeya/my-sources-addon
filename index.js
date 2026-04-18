@@ -3,11 +3,6 @@ const fetch = require('node-fetch');
 const app = express();
 const manifest = require('./manifest.json');
 
-const CONFIG = {
-    cb01_bridge: "https://cb01official.uno",
-    userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-};
-
 app.use((req, res, next) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Headers', '*');
@@ -20,38 +15,53 @@ app.get('/stream/:type/:id.json', async (req, res) => {
     const { type, id } = req.params;
     const streams = [];
 
+    // Cerchiamo di capire il titolo dall'ID di Nuvio (es. tt0816692 per Interstellar)
     try {
-        // 1. Trova il dominio reale
-        const bridgeRes = await fetch(CONFIG.cb01_bridge);
-        const baseUrl = bridgeRes.url.replace(/\/$/, "");
-
-        // 2. Chiamata a un'API esterna di ricerca (TMDB/Cinemeta) per ottenere il titolo dall'ID tt...
         const metaRes = await fetch(`https://v3-cinemeta.strem.io/meta/${type}/${id}.json`);
         const meta = await metaRes.json();
         const title = meta.meta.name;
 
-        // 3. Cerca il titolo su CB01
-        const searchUrl = `${baseUrl}/?s=${encodeURIComponent(title)}`;
-        const searchPage = await fetch(searchUrl, { headers: { 'User-Agent': CONFIG.userAgent } });
-        const html = await searchPage.text();
-
-        // 4. Estrazione (Regex molto semplice per trovare il primo risultato utile)
-        const match = html.match(/<h2 class="entry-title"><a href="(.*?)"/);
+        // Proviamo un dominio diretto che spesso funziona come "porta sul retro"
+        const searchUrl = `https://cb01.voto/?s=${encodeURIComponent(title)}`;
         
-        if (match && match[1]) {
+        const response = await fetch(searchUrl, {
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36',
+                'Referer': 'https://cb01.voto/'
+            }
+        });
+
+        const html = await response.text();
+
+        // Cerchiamo il link del primo film trovato
+        // La regex cerca il link dentro i titoli degli articoli di CB01
+        const linkMatch = html.match(/<h2 class="entry-title"><a href="(.*?)"/);
+
+        if (linkMatch && linkMatch[1]) {
             streams.push({
-                name: "CB01 Engine",
-                title: `🎬 Guarda: ${title}\nSorgente: CB01`,
-                url: match[1] // Qui stiamo mandando la pagina, Nuvio proverà a risolverla
+                name: "fonte sbogia",
+                title: `🚀 Trovato: ${title}\nPremi per i link`,
+                // Per ora rimandiamo ancora al video di test per confermare l'aggancio
+                url: "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4"
+            });
+        } else {
+            // Se non trova nulla, ci manda un segnale di debug
+            streams.push({
+                name: "fonte sbogia",
+                title: "❌ Film non trovato su CB01",
+                url: ""
             });
         }
-
     } catch (e) {
-        console.error(e);
+        streams.push({
+            name: "fonte sbogia",
+            title: "⚠️ Errore di connessione",
+            url: ""
+        });
     }
 
     res.json({ streams });
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log("Engine Online"));
+app.listen(PORT, () => console.log("Ninja Engine Ready"));
