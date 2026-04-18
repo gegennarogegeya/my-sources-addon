@@ -1,10 +1,9 @@
 const express = require('express');
 const app = express();
 
-// Il Manifest integrato per massima compatibilità con Nuvio
 const manifest = {
     id: "org.mysources.gege",
-    version: "1.0.0",
+    version: "1.2.0",
     name: "Fonte Sbogia",
     description: "Multi-Source Engine per Nuvio",
     resources: ["stream"],
@@ -12,41 +11,41 @@ const manifest = {
     idPrefixes: ["tt"]
 };
 
-// Middleware per gestire le autorizzazioni (CORS) e il formato dati
+// Intestazioni di sicurezza e permessi (CORS) - Versione Potenziata
 app.use((req, res, next) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Headers', '*');
-    res.setHeader('Content-Type', 'application/json');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    if (req.method === 'OPTIONS') {
+        return res.sendStatus(200);
+    }
     next();
 });
 
-// Rotta per il Manifest (Nuvio lo legge all'installazione)
+// Rotta Manifest
 app.get('/manifest.json', (req, res) => {
     res.json(manifest);
 });
 
-// Rotta principale per le ricerche (Nuvio la chiama quando premi Play)
+// Rotta Stream
 app.get('/stream/:type/:id.json', (req, res) => {
+    // Rispondiamo con un link MP4 diretto e pulito
     const streams = [
         {
             name: "Fonte Sbogia",
-            title: "🚀 Server Online\nTest: Connessione Ok!",
-            url: "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4"
+            title: "📺 TEST VIDEO DIRETTO\nSe lo vedi, il sistema funziona!",
+            url: "https://www.w3schools.com/html/mov_bbb.mp4" 
         }
     ];
 
     res.json({ streams });
 });
 
-// Rotta di cortesia per la home di Vercel
+// Rotta Home per Vercel
 app.get('/', (req, res) => {
-    res.json(manifest);
+    res.send("Fonte Sbogia Server is Online");
 });
 
-// Avvio del server
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-    console.log(`Fonte Sbogia pronta sulla porta ${PORT}`);
-});
-
+// Export per Vercel
 module.exports = app;
