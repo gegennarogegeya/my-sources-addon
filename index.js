@@ -4,9 +4,9 @@ const app = express();
 
 const manifest = {
     "id": "org.mysources.gege",
-    "version": "1.0.0",
+    "version": "9.0.0",
     "name": "SelfStream Engine",
-    "description": "CB01 Scraper con SelfStream",
+    "description": "CB01 Scraper Real-Time",
     "resources": ["stream"],
     "types": ["movie", "series"],
     "idPrefixes": ["tt"]
@@ -26,81 +26,53 @@ app.get('/stream/:type/:id.json', async (req, res) => {
     const cleanId = id.split(':')[0];
 
     try {
-        // 1. Ottieni il titolo da Cinemeta
+        // 1. Prendo il titolo da Cinemeta
         const metaRes = await fetch(`https://v3-cinemeta.strem.io/meta/${type}/${cleanId}.json`);
         const meta = await metaRes.json();
         const title = meta.meta ? meta.meta.name : "";
-
         if (!title) return res.json({ streams: [] });
 
-        // 2. Ricerca su CB01 (URL originale che fa il redirect)
+        // 2. Eseguo la ricerca su CB01
         const searchUrl = `https://cb01official.uno/?s=${encodeURIComponent(title)}`;
-        
         const response = await fetch(searchUrl, {
             headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                'Referer': 'https://cb01official.uno/'
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36'
             },
             redirect: 'follow'
         });
 
         const html = await response.text();
 
-        // 3. Estrazione Link del post
-        const postRegex = /<h2 class="entry-title"><a href="([^"]+)"/i;
-        const postMatch = html.match(postRegex);
+        // 3. ANALISI INTERNA (Regex dinamica)
+        // Cerchiamo i link dentro i tag <h2 class="entry-title"> che è lo standard di CB01
+        // Se non lo trova, cerca qualsiasi link che non sia roba di sistema (wp-content, ecc)
+        const postRegex = /<h2[^>]*>\s*<a[^>]*href="([^"]+)"[^>]*>/gi;
+        let match;
+        const streams = [];
 
-        if (postMatch && postMatch[1]) {
-            const moviePageUrl = postMatch[1];
+        while ((match = postRegex.exec(html)) !== null) {
+            const linkFound = match[1];
             
-            // 4. LOGICA SELFSTREAM: Entra nella pagina del film per cercare i link video
-            const moviePageRes = await fetch(moviePageUrl, {
-                headers: { 'User-Agent': 'Mozilla/5.0' }
-            });
-            const movieHtml = await moviePageRes.text();
-
-            // Cerchiamo i link ai vari server (MixDrop, Supervideo, ecc.)
-            // Questa regex cattura i link comuni nei post di CB01
-            const streamRegex = /href="(https?:\/\/(?:mixdrop|supervideo|upstream|vidoza)\.[a-z]+\/[^"]+)"/gi;
-            let match;
-            const streams = [];
-
-            while ((match = streamRegex.exec(movieHtml)) !== null) {
-                const streamUrl = match[1];
-                const provider = streamUrl.split('/')[2].split('.')[0].toUpperCase();
-                
+            // Verifichiamo che il link trovato sia un post e non una pagina di sistema
+            if (linkFound.includes('cb01') && !linkFound.includes('?s=') && !linkFound.includes('/category/')) {
                 streams.push({
-                    name: `SelfStream: ${provider}`,
-                    title: `🎬 ${title}\n⚡ Server: ${provider}`,
-                    url: streamUrl // Carica direttamente nel player se supportato, o externalUrl
-                });
-                
-                if (streams.length >= 4) break; 
-            }
-
-            // Se abbiamo trovato link diretti, li mandiamo
-            if (streams.length > 0) return res.json({ streams });
-
-            // Altrimenti mandiamo il link alla pagina come fallback
-            return res.json({
-                streams: [{
                     name: "CB01",
-                    title: `🔗 APRI PAGINA: ${title}`,
-                    externalUrl: moviePageUrl
-                }]
-            });
+                    title: `🎬 GUARDA: ${title}`,
+                    externalUrl: linkFound
+                });
+            }
+            if (streams.length >= 2) break;
         }
 
-    } catch (e) {
-        // Silenzio
-    }
+        return res.json({ streams: streams });
 
-    return res.json({ streams: [] });
+    } catch (e) {
+        return res.json({ streams: [] });
+    }
 });
 
 app.get('/', (req, res) => res.json(manifest));
 
 module.exports = app;
-
 const PORT = process.env.PORT || 3000;
 app.listen(PORT);
